@@ -5,7 +5,6 @@ from pathlib import Path
 import pytest
 from unittest.mock import patch
 
-# from context_menu import menus
 from context_menu import menus
 
 if TYPE_CHECKING:

@@ -4,6 +4,8 @@ from typing import TYPE_CHECKING
 import os
 from enum import Enum
 
+from context_menu import utils
+
 if TYPE_CHECKING:
     from context_menu.menus import ContextMenu, ItemType, ActivationType, CommandVar
 
@@ -176,225 +178,195 @@ class Variable:
         self.code = code
 
 
-class NautilusMenu:
-    # Constructor, automatically handeled by menus.py
-    def __init__(
-        self, name: str, sub_items: list[ItemType], type: ActivationType | str
-    ) -> None:
-        """
-        Items required are the name of the top menu, the sub items, and the type.
-        """
-        # nautilus extensions doesn't work with filenames with spaces
-        # Example menu item -> ExampleMenuItem
-        self.name = (
-            "".join([word.title() for word in name.split()])
-            if len(name.split()) > 0
-            else name
-        )
-        self.sub_items = sub_items
-        self.type = type
-        self.counter = 0
+# Methods to create action code
+def append_item(self, menu: str, item: str) -> str:
+    """
+    Creates a necessary body_command.
+    """
+    return "{}.append_item({})".format(menu, item)
 
-        # Create all the necessary lists that will be used later on
-        self.commands: list[str] = []
-        self.script_dirs: list[str] = []
-        self.funcs: list[str] = []
-        self.imports: list[str] = []
 
-    # Methods to create action code
-    def append_item(self, menu: str, item: str) -> str:
-        """
-        Creates a necessary body_command.
-        """
-        return "{}.append_item({})".format(menu, item)
+def set_submenu(self, item: str, menu: str) -> str:
+    """
+    Creates a necessary body_command.
+    """
+    return "{}.set_submenu({})".format(item, menu)
 
-    def set_submenu(self, item: str, menu: str) -> str:
-        """
-        Creates a necessary body_command.
-        """
-        return "{}.set_submenu({})".format(item, menu)
 
-    def connect(self, item: str, func: str) -> str:
-        """
-        Creates a necessary body_command.
-        """
-        return '{}.connect("activate", {}, files)'.format(item, func)
+def connect(self, item: str, func: str) -> str:
+    """
+    Creates a necessary body_command.
+    """
+    return '{}.connect("activate", {}, files)'.format(item, func)
 
-    # Methods to create variable declarations
 
-    def generate_menu(self) -> Variable:
-        """
-        Generates a nautilus menu variable.
-        """
-        base_menu = ExistingCode.SUB_MENU.value
-        base_menu = base_menu.format(self.counter)
-        self.counter += 1
+# Methods to create variable declarations
 
-        return Variable(base_menu.split(" = ")[0], base_menu)
 
-    def generate_item(self, name: str) -> Variable:
-        """
-        Generates a nautilus command variable.
-        """
-        base_command = ExistingCode.MENU_ITEM.value
-        formatted_item = base_command.format(self.counter, name, name, "", "")
-        self.counter += 1
+def generate_menu(self) -> Variable:
+    """
+    Generates a nautilus menu variable.
+    """
+    base_menu = ExistingCode.SUB_MENU.value
+    base_menu = base_menu.format(self.counter)
+    self.counter += 1
 
-        return Variable(formatted_item.split(" = ")[0], formatted_item)
+    return Variable(base_menu.split(" = ")[0], base_menu)
 
-    def generate_python_func(
-        self, class_origin: str, class_func: str, params: str
-    ) -> Variable:
-        """
-        Generates a command attached to a python function
-        """
-        func_name = "method_handler{}".format(self.counter)
-        created_func = ExistingCode.METHOD_HANDLER_TEMPLATE.value.format(
-            func_name, class_origin, class_func, "filenames", params
-        )
 
-        self.counter += 1
+def generate_item(self, name: str) -> Variable:
+    """
+    Generates a nautilus command variable.
+    """
+    base_command = ExistingCode.MENU_ITEM.value
+    formatted_item = base_command.format(self.counter, name, name, "", "")
+    self.counter += 1
 
-        return Variable(f"self.{func_name}", created_func)
+    return Variable(formatted_item.split(" = ")[0], formatted_item)
 
-    def generate_command_func(self, command: str) -> Variable:
-        """
-        Generates a command attached to a python function
-        """
-        func_name = "method_handler{}".format(self.counter)
-        created_func = ExistingCode.COMMAND_HANDLER_TEMPLATE.value.format(
-            func_name, command, ""
-        )
 
-        self.counter += 1
+def generate_python_func(
+    self, class_origin: str, class_func: str, params: str
+) -> Variable:
+    """
+    Generates a command attached to a python function
+    """
+    func_name = "method_handler{}".format(self.counter)
+    created_func = ExistingCode.METHOD_HANDLER_TEMPLATE.value.format(
+        func_name, class_origin, class_func, "filenames", params
+    )
 
-        return Variable(f"self.{func_name}", created_func)
+    self.counter += 1
 
-    def generate_mod_command_func(
-        self, command: str, command_vars: list[CommandVar]
-    ) -> Variable:
-        """
-        Generates a command attached to a python function that allows special variables.
-        """
-        new_command = command.replace("?", "{}")
-        modified_vars = [command_var_format(item) for item in command_vars]
-        final_str = ", ".join(modified_vars)
-        func_name = "method_handler{}".format(self.counter)
-        replace_func = """.format({})""".format(final_str)
-        created_func = ExistingCode.COMMAND_HANDLER_TEMPLATE.value.format(
-            func_name, new_command, replace_func
-        )
+    return Variable(f"self.{func_name}", created_func)
 
-        self.counter += 1
 
-        return Variable(f"self.{func_name}", created_func)
+def generate_command_func(self, command: str) -> Variable:
+    """
+    Generates a command attached to a python function
+    """
+    func_name = "method_handler{}".format(self.counter)
+    created_func = ExistingCode.COMMAND_HANDLER_TEMPLATE.value.format(
+        func_name, command, ""
+    )
 
-    # Other misc methods to help out
+    self.counter += 1
 
-    def get_next_item(self) -> str:
-        """
-        Very niche, required in other methods.
-        """
-        val = self.generate_item("")
-        self.counter -= 1
+    return Variable(f"self.{func_name}", created_func)
 
-        return val.name
 
-    # Building the script body
+def generate_mod_command_func(
+    self, command: str, command_vars: list[CommandVar]
+) -> Variable:
+    """
+    Generates a command attached to a python function that allows special variables.
+    """
+    new_command = command.replace("?", "{}")
+    modified_vars = [command_var_format(item) for item in command_vars]
+    final_str = ", ".join(modified_vars)
+    func_name = "method_handler{}".format(self.counter)
+    replace_func = """.format({})""".format(final_str)
+    created_func = ExistingCode.COMMAND_HANDLER_TEMPLATE.value.format(
+        func_name, new_command, replace_func
+    )
 
-    def build_script_body(self, name: str, items: list[ItemType]) -> None:
-        """
-        Builds the body commands of the script.
-        """
-        top_item = self.generate_item(name)
-        top_menu = self.generate_menu()
-        submenu_com = self.set_submenu(top_item.name, top_menu.name)
-        self.commands.append(top_item.code)
-        self.commands.append(top_menu.code)
-        self.commands.append(submenu_com)
+    self.counter += 1
 
-        for item in items:
-            if item.isMenu:
-                subsubmenu_con = self.append_item(top_menu.name, self.get_next_item())
-                self.build_script_body(item.name, item.sub_items)
-                self.commands.append(subsubmenu_con)
-                continue
+    return Variable(f"self.{func_name}", created_func)
 
-            # if the item is a command
-            formatted_command = self.generate_item(item.name)
-            self.commands.append(formatted_command.code)
 
-            if item.python != None:
-                # if there is a python function
-                item_info = item.get_method_info()
-                connected_func = self.generate_python_func(
-                    item_info[1], item_info[0], item.params
-                )
-                self.script_dirs.append(item_info[2])
-                self.imports.append(item_info[1])
-            elif item.command_vars != None:
-                # if the command requries parameters
-                assert item.command is not None
-                assert item.command_vars is not None
-                connected_func = self.generate_mod_command_func(
-                    item.command, item.command_vars
-                )
-            else:
-                # if the command is simply normal
-                assert item.command is not None
-                connected_func = self.generate_command_func(item.command)
-                # connected_func = self.generate_func('os', 'system')
+# Other misc methods to help out
 
-            self.funcs.append(connected_func.code)
 
-            connected_command = self.connect(
-                formatted_command.name, connected_func.name
+def get_next_item(self) -> str:
+    """
+    Very niche, required in other methods.
+    """
+    val = self.generate_item("")
+    self.counter -= 1
+
+    return val.name
+
+
+# Building the script body
+
+
+def build_script_body(self, name: str, items: list[ItemType]) -> None:
+    """
+    Builds the body commands of the script.
+    """
+    top_item = self.generate_item(name)
+    top_menu = self.generate_menu()
+    submenu_com = self.set_submenu(top_item.name, top_menu.name)
+    self.commands.append(top_item.code)
+    self.commands.append(top_menu.code)
+    self.commands.append(submenu_com)
+
+    for item in items:
+        if isinstance(item, ContextMenu):
+            subsubmenu_con = self.append_item(top_menu.name, self.get_next_item())
+            self.build_script_body(item.name, item.sub_items)
+            self.commands.append(subsubmenu_con)
+            continue
+
+        # if the item is a command
+        formatted_command = self.generate_item(item.name)
+        self.commands.append(formatted_command.code)
+
+        if item.python is not None:
+            # if there is a python function
+            item_info = utils.get_method_info(item.python)
+            connected_func = self.generate_python_func(
+                item_info[1], item_info[0], item.params
             )
-            self.commands.append(connected_command)
-
-            self.commands.append(
-                self.append_item(top_menu.name, formatted_command.name)
+            self.script_dirs.append(item_info[2])
+            self.imports.append(item_info[1])
+        elif item.command_vars is not None:
+            # if the command requries parameters
+            assert item.command is not None
+            connected_func = self.generate_mod_command_func(
+                item.command, item.command_vars
             )
+        else:
+            # if the command is simply normal
+            assert item.command is not None
+            connected_func = self.generate_command_func(item.command)
+            # connected_func = self.generate_func('os', 'system')
 
-    def build_script(self) -> str:
-        """
-        Finishes and returns the full code.
-        """
-        self.build_script_body(self.name, self.sub_items)
-        self.commands.append("return menuitem0,")
-        full_code = CodeBuilder(
-            self.name,
-            self.commands,
-            self.script_dirs,
-            self.funcs,
-            self.imports,
-            self.type,
-        ).compile()
+        self.funcs.append(connected_func.code)
 
-        return full_code
+        connected_command = self.connect(formatted_command.name, connected_func.name)
+        self.commands.append(connected_command)
 
-    def create_path(self, path: str, dir: str) -> str:
-        """
-        Creates a path to directory. Creates all sub-directories
-        """
-        new_dir = os.path.join(path, dir)
-        if not os.path.exists(new_dir):
-            os.makedirs(new_dir)
-        return new_dir
+        self.commands.append(self.append_item(top_menu.name, formatted_command.name))
 
-    def compile(self) -> None:
-        """
-        Creates the code, creates a file, and moves it to the correct location.
-        """
-        code = self.build_script()
-        save_loc = os.path.join(os.path.expanduser("~"), ".local/share/")
-        print(save_loc)
-        save_loc = self.create_path(save_loc, "nautilus-python")
-        save_loc = self.create_path(save_loc, "extensions")
-        save_loc = os.path.join(save_loc, f"{self.name}.py")
-        py_file = open(save_loc, "w")
-        py_file.write(code)
-        py_file.close()
+
+def build_script(menu: ContextMenu) -> str:
+    """
+    Finishes and returns the full code.
+    """
+    build_script_body(menu.name, menu.sub_items)
+    menu.commands.append("return menuitem0,")
+    full_code = CodeBuilder(
+        menu.name,
+        menu.commands,
+        menu.script_dirs,
+        menu.funcs,
+        menu.imports,
+        menu.type,
+    ).compile()
+
+    return full_code
+
+
+def create_path(path: str, dir: str) -> str:
+    """
+    Creates a path to directory. Creates all sub-directories
+    """
+    new_dir = os.path.join(path, dir)
+    if not os.path.exists(new_dir):
+        os.makedirs(new_dir)
+    return new_dir
 
 
 # Testing section...

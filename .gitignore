@@ -8,3 +8,4 @@ direct_test.py
 .idea
 .coverage
 pytest-report.html
+.tox

@@ -7,13 +7,9 @@ import sys
 
 if TYPE_CHECKING:
     from typing import Any
-    from types import FunctionType
     from context_menu.menus import (
-        ItemType,
-        MethodInfo,
         ActivationType,
         CommandVar,
-        ContextMenu,
     )
 
 
@@ -62,10 +58,19 @@ try:
         """
         Changes the value of a subkey. Creates the subkey if it doesn't exist.
         """
+        with winreg.OpenKey(hive, key_path, 0, winreg.KEY_WRITE) as open_key:
+            winreg.SetValueEx(open_key, subkey_name, 0, winreg.REG_SZ, value)
 
-        registry_key = winreg.OpenKey(hive, key_path, 0, winreg.KEY_WRITE)
-        winreg.SetValueEx(registry_key, subkey_name, 0, winreg.REG_SZ, value)
-        winreg.CloseKey(registry_key)
+    def get_key_value(
+        key_path: str,
+        subkey_name: str,
+        hive: int = winreg.HKEY_CURRENT_USER,
+    ) -> Any:
+        """
+        Changes the value of a subkey. Creates the subkey if it doesn't exist.
+        """
+        with winreg.OpenKey(hive, key_path, 0, winreg.KEY_WRITE) as open_key:
+            return winreg.QueryValueEx(open_key, subkey_name)[0]
 
     def get_key_value(
         key_path: str,
@@ -82,16 +87,15 @@ try:
         """
         Returns a list of all the keys at a given registry path.
         """
+        with winreg.OpenKey(hive, path) as open_key:
+            key_amt = winreg.QueryInfoKey(open_key)[0]
+            keys = []
 
-        open_key = winreg.OpenKey(hive, path)
-        key_amt = winreg.QueryInfoKey(open_key)[0]
-        keys = []
+            for count in range(key_amt):
+                subkey = winreg.EnumKey(open_key, count)
+                keys.append(subkey)
 
-        for count in range(key_amt):
-            subkey = winreg.EnumKey(open_key, count)
-            keys.append(subkey)
-
-        return keys
+            return keys
 
     def delete_key(path: str, hive: int = winreg.HKEY_CURRENT_USER) -> None:
         """
@@ -274,164 +278,35 @@ def create_shell_command(command: str, command_vars: list[CommandVar]) -> str:
 # windows_menus.py ----------------------------------------------------------------------------------------
 
 
-# Used to create a Registry entry
-class RegistryMenu:
+def create_menu(name: str, path: str) -> str:
     """
-    Class to convert the general menu from menus.py to a Windows-specific menu.
+    Creates a menu with the given name and path.
+
+    Used in the compile method.
     """
+    key_path = join_keys(path, name)
+    create_key(key_path)
 
-    def __init__(self, name: str, sub_items: list[ItemType], type: str) -> None:
-        """
-        Handled automatically by menus.py, but requires a name, all the sub items, and a type
-        """
-        self.name = name
-        self.sub_items = sub_items
-        self.type = type.upper()
-        self.path = context_registry_format(type)
+    set_key_value(key_path, "MUIVerb", name)
+    set_key_value(key_path, "subcommands", "")
 
-    def create_menu(self, name: str, path: str) -> str:
-        """
-        Creates a menu with the given name and path.
+    key_shell_path = join_keys(key_path, "shell")
+    create_key(key_shell_path)
 
-        Used in the compile method.
-        """
-        key_path = join_keys(path, name)
-        create_key(key_path)
-
-        set_key_value(key_path, "MUIVerb", name)
-        set_key_value(key_path, "subcommands", "")
-
-        key_shell_path = join_keys(key_path, "shell")
-        create_key(key_shell_path)
-
-        return key_shell_path
-
-    def create_command(self, name: str, path: str, command: str) -> None:
-        """
-        Creates a key with a command subkey with the 'name' and 'command', at path 'path'.
-        """
-        key_path = join_keys(path, name)
-        create_key(key_path)
-        set_key_value(key_path, "", name)
-
-        command_path = join_keys(key_path, "command")
-        create_key(command_path)
-        set_key_value(command_path, "", command)
-
-    def compile(
-        self, items: list[ItemType] | None = None, path: str | None = None
-    ) -> None:
-        """
-        Used to create the menu. Recursively iterates through each element in the top level menu.
-        """
-        if items == None:
-            # run_admin()
-            items = self.sub_items
-            path = self.create_menu(self.name, self.path)
-
-        assert items is not None
-        assert path is not None
-        for item in items:
-            if item.isMenu:
-                # if the item is a menu
-                submenu_path = self.create_menu(item.name, path)
-                self.compile(items=item.sub_items, path=submenu_path)
-                continue
-
-            # Otherwise the item is  a command
-            if item.command == None:
-                # If a Python function is defined
-                func_name, func_file_name, func_dir_path = item.get_method_info()
-                new_command = None
-                if self.type in ["DIRECTORY_BACKGROUND", "DESKTOP_BACKGROUND"]:
-                    # If it requires a background command
-                    new_command = create_directory_background_command(
-                        func_name, func_file_name, func_dir_path, item.params
-                    )
-                else:
-                    # If it requires a file command
-                    new_command = create_file_select_command(
-                        func_name, func_file_name, func_dir_path, item.params
-                    )
-                self.create_command(item.name, path, new_command)
-            elif item.command_vars != None:
-                # If the item has to be ran from os.system
-                assert item.command is not None
-                assert item.command_vars is not None
-                new_command = create_shell_command(item.command, item.command_vars)
-                self.create_command(item.name, path, new_command)
-            else:
-                # The item is just a plain old command
-                assert item.command is not None
-                self.create_command(item.name, path, item.command)
+    return key_shell_path
 
 
-# Fast command class
-# Everything is identical to either the RegistryMenu class or code in the menus file
-class FastRegistryCommand:
+def create_command(name: str, path: str, command: str) -> None:
     """
-    Fast command class.
-
-    Everything is identical to either the RegistryMenu class or code in the menus file
+    Creates a key with a command subkey with the 'name' and 'command', at path 'path'.
     """
+    key_path = join_keys(path, name)
+    create_key(key_path)
+    set_key_value(key_path, "", name)
 
-    def __init__(
-        self,
-        name: str,
-        type: ActivationType | str,
-        command: str,
-        python: FunctionType,
-        params: str,
-        command_vars: list[CommandVar],
-    ) -> None:
-        self.name = name
-        self.type = type
-        self.path = context_registry_format(type)
-        self.command = command
-        self.python = python
-        self.params = params
-        self.command_vars = command_vars
-
-    def get_method_info(self) -> MethodInfo:
-        import inspect
-
-        func_file_path = os.path.abspath(inspect.getfile(self.python))
-
-        func_dir_path = os.path.dirname(func_file_path)
-        func_name = self.python.__name__
-        func_file_name = os.path.splitext(os.path.basename(func_file_path))[0]
-
-        return (func_name, func_file_name, func_dir_path)
-
-    def compile(self) -> None:
-        # run_admin()
-
-        key_path = join_keys(self.path, self.name)
-        create_key(key_path)
-
-        command_path = join_keys(key_path, "command")
-        create_key(command_path)
-
-        new_command = self.command
-
-        if self.command == None:
-            # If a python function is defined
-            func_name, func_file_name, func_dir_path = self.get_method_info()
-            if self.type in ["DIRECTORY_BACKGROUND", "DESKTOP_BACKGROUND"]:
-                # If it requires a background selection
-                new_command = create_directory_background_command(
-                    func_name, func_file_name, func_dir_path, self.params
-                )
-            else:
-                # If it requires a file selection
-                new_command = create_file_select_command(
-                    func_name, func_file_name, func_dir_path, self.params
-                )
-        elif self.command_vars != None:
-            # If it has command_vars
-            new_command = create_shell_command(self.command, self.command_vars)
-
-        set_key_value(command_path, "", new_command)
+    command_path = join_keys(key_path, "command")
+    create_key(command_path)
+    set_key_value(command_path, "", command)
 
 
 # Testing section...

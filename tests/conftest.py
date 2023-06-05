@@ -3,6 +3,8 @@ from typing import TYPE_CHECKING
 from unittest.mock import patch
 import pytest
 
+from context_menu.utils import PLATFORM_LINUX, PLATFORM_WINDOWS
+
 
 if TYPE_CHECKING:
     from typing import Iterable
@@ -19,6 +21,7 @@ class MockedPlatform:
         self._name = name
         self._patches = [
             patch("context_menu.menus.platform", self),
+            patch("context_menu.utils.platform", self),
         ]
 
     def system(self) -> str:
@@ -45,5 +48,12 @@ def mock_platform(name: str) -> MockedPlatform:
 @pytest.fixture
 def windows_platform() -> Iterable[None]:
     """Makes the code think we are on Windows."""
-    with mock_platform("Windows"):
+    with mock_platform(PLATFORM_WINDOWS):
+        yield
+
+
+@pytest.fixture
+def libux_platform() -> Iterable[None]:
+    """Makes the code think we are on Linux."""
+    with mock_platform(PLATFORM_LINUX):
         yield
